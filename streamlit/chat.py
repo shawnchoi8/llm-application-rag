@@ -1,5 +1,4 @@
 from dotenv import load_dotenv
-from langchain_classic import hub
 from langchain_classic.chains import RetrievalQA
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -31,10 +30,17 @@ def get_ai_message(user_message):
 
     database = PineconeVectorStore.from_existing_index(index_name=index_name, embedding=embedding)
 
-    llm = ChatOllama(model="llama3:latest")
+    llm = ChatOllama(model="exaone3.5:7.8b")
 
-    # get prompt from hub
-    prompt = hub.pull("rlm/rag-prompt")
+    # custom Korean prompt for tax QA
+    prompt = ChatPromptTemplate.from_template(
+        """다음 context를 기반으로 질문에 답변해주세요.
+        context에 없는 내용은 모른다고 답변해주세요.
+
+        Context: {context}
+
+        Question: {question}"""
+    )
 
     # retrieve document based on query
     retriever = database.as_retriever(search_kwargs={"k": 5})
