@@ -105,16 +105,16 @@ def get_rag_chain(llm):
     return conversational_rag_chain
 
 
-def get_ai_message(user_message):
+def get_ai_response(user_message):
     llm = get_llm()
     dictionary_chain = get_dictionary_chain(llm)
     rag_chain = get_rag_chain(llm)
 
     # build tax_chain (dictionary_chain + qa_chain)
     tax_chain = {"input": dictionary_chain} | rag_chain
-    ai_message = tax_chain.invoke(
+    ai_response = tax_chain.stream(
         {"question": user_message},
         config={"configurable": {"session_id": "abc123"}},
     )
 
-    return ai_message
+    return ai_response
