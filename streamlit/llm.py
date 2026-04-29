@@ -1,8 +1,22 @@
-from langchain_classic.chains import RetrievalQA
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_pinecone import PineconeVectorStore
+
+
+store = {}
+
+
+# save chat history by using session id
+def get_session_history(session_id: str) -> BaseChatMessageHistory:
+    if session_id not in store:
+        store[session_id] = ChatMessageHistory()
+    return store[session_id]
 
 
 def get_retriever():
@@ -39,31 +53,68 @@ def get_dictionary_chain(llm):
     return dictionary_chain
 
 
-def get_qa_chain(llm):
+def get_rag_chain(llm):
     retriever = get_retriever()
 
-    # custom Korean prompt for tax QA
-    prompt = ChatPromptTemplate.from_template(
-        """다음 context를 기반으로 질문에 답변해주세요.
-        context에 없는 내용은 모른다고 답변해주세요.
-
-        Context: {context}
-
-        Question: {question}"""
+    # system prompt를 활용해서 -> 새로운 chat prompt를 만든다.
+    contextualize_q_system_prompt = (
+        "Given a chat history and the latest user question "
+        "which might reference context in the chat history,"
+        "formulate a standalone question which can be understood "
+        "without the chat history. Do NOT answer the question, "
+        "just reformulate it if needed and otherwise return it as is"
     )
 
-    # define QA Chain
-    qa_chain = RetrievalQA.from_chain_type(llm, retriever=retriever, chain_type_kwargs={"prompt": prompt})
-    return qa_chain
+    contextualize_q_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
+
+    history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
+
+    system_prompt = (
+        "you are an assistant for question-answering task. "
+        "Use the following pieces of retrieved context to answer "
+        "the question. If you don't know the answer, say that you "
+        "don't know. Use three sentences maximum and keep the "
+        "answer concise."
+        "\n\n"
+        "{context}"
+    )
+
+    qa_prompt = ChatPromptTemplate.from_messages(
+        [("system", system_prompt), MessagesPlaceholder("chat_history"), ("human", "{input}")]
+    )
+
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+
+    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+
+    # chat history 까지 반영된 rag_chain 생성
+    conversational_rag_chain = RunnableWithMessageHistory(
+        rag_chain,
+        get_session_history,
+        input_messages_key="input",
+        history_messages_key="chat_history",
+        output_messages_key="answer",
+    ).pick("answer")
+
+    return conversational_rag_chain
 
 
 def get_ai_message(user_message):
     llm = get_llm()
     dictionary_chain = get_dictionary_chain(llm)
-    qa_chain = get_qa_chain(llm)
+    rag_chain = get_rag_chain(llm)
 
     # build tax_chain (dictionary_chain + qa_chain)
-    tax_chain = {"query": dictionary_chain} | qa_chain
-    ai_message = tax_chain.invoke({"question": user_message})
+    tax_chain = {"input": dictionary_chain} | rag_chain
+    ai_message = tax_chain.invoke(
+        {"question": user_message},
+        config={"configurable": {"session_id": "abc123"}},
+    )
 
-    return ai_message["result"]
+    return ai_message
