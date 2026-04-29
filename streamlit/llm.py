@@ -64,6 +64,13 @@ def get_rag_chain(llm):
         "without the chat history. Do NOT answer the question, "
         "just reformulate it if needed and otherwise return it as is"
     )
+    # contextualize_q_system_prompt = (
+    #     "채팅 기록과 최신 사용자 질문이 주어졌을 때, "
+    #     "채팅 기록의 맥락을 참조할 수 있는 질문을 "
+    #     "채팅 기록 없이도 이해할 수 있는 독립적인 질문으로 재구성해주세요. "
+    #     "질문에 답변하지 말고, 필요하다면 재구성만 하고 "
+    #     "그렇지 않으면 그대로 반환해주세요."
+    # )
 
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
@@ -84,6 +91,14 @@ def get_rag_chain(llm):
         "\n\n"
         "{context}"
     )
+    # system_prompt = (
+    #     "당신은 질문-답변 업무를 돕는 어시스턴트입니다. "
+    #     "아래 검색된 context를 사용하여 질문에 답변해주세요. "
+    #     "답을 모르면 모른다고 말해주세요. "
+    #     "최대 세 문장으로 간결하게 답변해주세요."
+    #     "\n\n"
+    #     "{context}"
+    # )
 
     qa_prompt = ChatPromptTemplate.from_messages(
         [("system", system_prompt), MessagesPlaceholder("chat_history"), ("human", "{input}")]
