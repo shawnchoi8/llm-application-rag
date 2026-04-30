@@ -28,32 +28,7 @@ def get_retriever():
     return retriever
 
 
-def get_llm(model="exaone3.5:7.8b"):
-    llm = ChatOllama(model=model)
-    return llm
-
-
-def get_dictionary_chain(llm):
-    # define dictionary
-    dictionary = ["사람을 나타내는 표현 -> 거주자"]
-    dictionary_prompt = ChatPromptTemplate.from_template(
-        f"""
-        사용자의 질문을 보고, 우리의 사전을 참고해서, 사용자의 질문을 변경해주세요.
-        만약 변경할 필요가 없다고 판단된다면, 사용자의 질문을 변경하지 않아도 됩니다.
-        변경된 질문만 출력해주세요. 다른 설명은 하지 마세요.
-
-        사전: {dictionary}
-
-        질문: {{question}}
-    """
-    )
-
-    dictionary_chain = dictionary_prompt | llm | StrOutputParser()
-
-    return dictionary_chain
-
-
-def get_rag_chain(llm):
+def get_history_retriever(llm):
     retriever = get_retriever()
 
     # system prompt를 활용해서 -> 새로운 chat prompt를 만든다.
@@ -81,6 +56,35 @@ def get_rag_chain(llm):
     )
 
     history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
+    return history_aware_retriever
+
+
+def get_llm(model="exaone3.5:7.8b"):
+    llm = ChatOllama(model=model)
+    return llm
+
+
+def get_dictionary_chain(llm):
+    # define dictionary
+    dictionary = ["사람을 나타내는 표현 -> 거주자"]
+    dictionary_prompt = ChatPromptTemplate.from_template(
+        f"""
+        사용자의 질문을 보고, 우리의 사전을 참고해서, 사용자의 질문을 변경해주세요.
+        만약 변경할 필요가 없다고 판단된다면, 사용자의 질문을 변경하지 않아도 됩니다.
+        변경된 질문만 출력해주세요. 다른 설명은 하지 마세요.
+
+        사전: {dictionary}
+
+        질문: {{question}}
+    """
+    )
+
+    dictionary_chain = dictionary_prompt | llm | StrOutputParser()
+
+    return dictionary_chain
+
+
+def get_rag_chain(llm):
 
     system_prompt = (
         "you are an assistant for question-answering task. "
@@ -104,6 +108,7 @@ def get_rag_chain(llm):
         [("system", system_prompt), MessagesPlaceholder("chat_history"), ("human", "{input}")]
     )
 
+    history_aware_retriever = get_history_retriever(llm)
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 
     rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
