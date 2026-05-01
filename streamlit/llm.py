@@ -1,5 +1,5 @@
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, FewShotChatMessagePromptTemplate
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -8,6 +8,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_pinecone import PineconeVectorStore
 
+from config import answer_examples
 
 store = {}
 
@@ -86,26 +87,31 @@ def get_dictionary_chain(llm):
 
 def get_rag_chain(llm):
 
+    example_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("human", "{input}"),
+            ("ai", "{answer}"),
+        ]
+    )
+
+    # config.py(example qa)
+    few_shot_prompt = FewShotChatMessagePromptTemplate(
+        example_prompt=example_prompt,
+        examples=answer_examples,
+    )
+
     system_prompt = (
-        "you are an assistant for question-answering task. "
-        "Use the following pieces of retrieved context to answer "
-        "the question. If you don't know the answer, say that you "
-        "don't know. Use three sentences maximum and keep the "
-        "answer concise."
+        "당신은 소득세법 전문가입니다. 사용자의 소득세법에 관한 질문에 답변해주세요"
+        "아래에 제공된 문서를 활용하여 답변해주시고"
+        "답변을 알 수 없다면 모른다고 답변해주세요"
+        "답변을 제공할 때는 소득세법 (XX조)에 따르면 이라고 시작하면서 답변해주시고"
+        "2-3 문장정도의 짧은 내용의 답변을 원합니다"
         "\n\n"
         "{context}"
     )
-    # system_prompt = (
-    #     "당신은 질문-답변 업무를 돕는 어시스턴트입니다. "
-    #     "아래 검색된 context를 사용하여 질문에 답변해주세요. "
-    #     "답을 모르면 모른다고 말해주세요. "
-    #     "최대 세 문장으로 간결하게 답변해주세요."
-    #     "\n\n"
-    #     "{context}"
-    # )
 
     qa_prompt = ChatPromptTemplate.from_messages(
-        [("system", system_prompt), MessagesPlaceholder("chat_history"), ("human", "{input}")]
+        [("system", system_prompt), few_shot_prompt, MessagesPlaceholder("chat_history"), ("human", "{input}")]
     )
 
     history_aware_retriever = get_history_retriever(llm)
